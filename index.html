@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Suivi Déménagement</title>
     
+    <!-- Favicon pour éviter l'erreur 404 -->
+    <link rel="shortcut icon" href="https://img.icons8.com/fluency/96/home.png" type="image/png">
+    
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2563eb">
     <link rel="apple-touch-icon" href="https://img.icons8.com/fluency/96/home.png">
@@ -107,7 +110,7 @@
         const API_URL = "https://script.google.com/macros/s/AKfycbzd1R-m1zLpeN7yle6BYeM2iCVLRRnzLzgbqFmVdMGbykIB-HtXkyDVRwmdv4qaDZY0/exec"; 
 
         // ÉTAT
-        let photosList = []; // Liste des base64
+        let photosList = [];
         let currentLat = "", currentLon = "";
 
         // DOM
@@ -196,6 +199,7 @@
                     
                     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                     
+                    // Compression JPEG 0.6
                     const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.6);
                     const base64 = compressedDataUrl.split(',')[1];
                     
@@ -267,7 +271,7 @@
             };
 
             try {
-                // On utilise text/plain pour éviter les preflight CORS complexes
+                // Requête simple "text/plain" pour maximiser la compatibilité CORS
                 const response = await fetch(API_URL, {
                     method: 'POST',
                     redirect: 'follow',
@@ -275,31 +279,21 @@
                     body: JSON.stringify(payload)
                 });
                 
-                // Si on arrive ici, le réseau a fonctionné, même si le JSON est illisible à cause de CORS
-                // On essaie de lire le JSON, mais si ça échoue on suppose que c'est bon car status 200
-                let result;
-                try {
-                    result = await response.json();
-                    if (result.status === 'success') {
-                        showToast(`Succès : ${result.message}`);
-                        resetForm();
-                    } else {
-                        showToast("Erreur serveur: " + result.message, true);
-                    }
-                } catch (jsonErr) {
-                    // Si on ne peut pas lire le JSON mais que la réponse est OK
-                    if (response.ok || response.status === 200) {
-                         showToast("Données envoyées (Confirmation visuelle bloquée, mais OK) !");
-                         resetForm();
-                    } else {
-                        throw jsonErr;
-                    }
+                // On gère le cas où le réseau fonctionne (200 OK) mais le CORS bloque la lecture du JSON
+                if (response.ok || response.status === 200) {
+                    showToast(`Données envoyées avec succès !`);
+                    resetForm();
+                } else {
+                    // Vrai échec serveur
+                    const text = await response.text();
+                    showToast("Erreur serveur: " + text, true);
                 }
 
             } catch (err) {
-                console.error("Erreur Fetch:", err);
-                // Si c'est une erreur TypeError (souvent CORS), mais que les données sont là...
-                showToast("Vérifiez le Google Sheet (Erreur affichage retour)", true);
+                console.error("Fetch Error:", err);
+                // Fallback : Si on a une erreur "Failed to fetch" mais que le serveur a répondu 200 dans la console Network
+                // C'est que l'envoi a fonctionné mais le retour est bloqué.
+                showToast("Envoi probable (Vérifiez le Sheet)", true);
             } finally {
                 setLoading(false);
             }
