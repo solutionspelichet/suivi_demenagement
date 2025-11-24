@@ -1,13 +1,13 @@
-const CACHE_NAME = 'etat-lieux-v1';
+// On incrémente la version ici : v2
+const CACHE_NAME = 'etat-lieux-v2';
 const ASSETS = [
   './',
   './index.html',
   './manifest.json',
-  '[https://cdn.tailwindcss.com](https://cdn.tailwindcss.com)',
-  '[https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css](https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css)'
+  'https://cdn.tailwindcss.com',
+  'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css'
 ];
 
-// Installation : mise en cache des fichiers statiques
 self.addEventListener('install', (e) => {
   e.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
@@ -16,9 +16,22 @@ self.addEventListener('install', (e) => {
   );
 });
 
-// Fetch : servir le cache si disponible, sinon réseau
+// Activation : Suppression des vieux caches (v1)
+self.addEventListener('activate', (e) => {
+    e.waitUntil(
+        caches.keys().then((keys) => {
+            return Promise.all(
+                keys.map((key) => {
+                    if (key !== CACHE_NAME) {
+                        return caches.delete(key);
+                    }
+                })
+            );
+        })
+    );
+});
+
 self.addEventListener('fetch', (e) => {
-  // On ignore les requêtes vers l'API Google Apps Script (elles doivent être live)
   if (e.request.url.includes('script.google.com')) {
     return;
   }
