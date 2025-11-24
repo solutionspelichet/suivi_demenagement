@@ -1,20 +1,43 @@
-{
-  "name": "Suivi Déménagement",
-  "short_name": "ÉtatLieux",
-  "start_url": "./index.html",
-  "display": "standalone",
-  "background_color": "#f3f4f6",
-  "theme_color": "#2563eb",
-  "icons": [
-    {
-      "src": "https://img.icons8.com/fluency/192/home.png",
-      "sizes": "192x192",
-      "type": "image/png"
-    },
-    {
-      "src": "https://img.icons8.com/fluency/512/home.png",
-      "sizes": "512x512",
-      "type": "image/png"
-    }
-  ]
-}
+const CACHE_NAME = 'etat-lieux-v3'; // Nouvelle version v3
+const ASSETS = [
+  './',
+  './index.html',
+  './manifest.json'
+  // On a retiré les liens externes (Tailwind/FontAwesome) ici pour éviter l'erreur "Failed to fetch"
+  // Le navigateur les mettra en cache via son cache standard HTTP.
+];
+
+self.addEventListener('install', (e) => {
+  e.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.addAll(ASSETS);
+    })
+  );
+});
+
+self.addEventListener('activate', (e) => {
+    e.waitUntil(
+        caches.keys().then((keys) => {
+            return Promise.all(
+                keys.map((key) => {
+                    if (key !== CACHE_NAME) {
+                        return caches.delete(key);
+                    }
+                })
+            );
+        })
+    );
+});
+
+self.addEventListener('fetch', (e) => {
+  // On ignore les requêtes API vers Google
+  if (e.request.url.includes('script.google.com')) {
+    return;
+  }
+
+  e.respondWith(
+    caches.match(e.request).then((response) => {
+      return response || fetch(e.request);
+    })
+  );
+});
