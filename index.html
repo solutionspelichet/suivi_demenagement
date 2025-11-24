@@ -27,6 +27,15 @@
 
     <main class="p-4 max-w-md mx-auto space-y-4">
         <form id="inspectionForm" class="space-y-4">
+
+            <!-- Agent / Utilisateur (Nouveau) -->
+            <div class="bg-white p-4 rounded-lg shadow">
+                <label class="block text-gray-700 text-sm font-bold mb-2">Agent / Utilisateur</label>
+                <input list="agentsList" id="agentInput" type="text" placeholder="Votre nom..." class="w-full p-3 border border-gray-300 rounded focus:outline-none focus:border-blue-500" required>
+                <datalist id="agentsList">
+                    <!-- Rempli par JS via localStorage -->
+                </datalist>
+            </div>
             
             <!-- Appartement -->
             <div class="bg-white p-4 rounded-lg shadow">
@@ -94,6 +103,8 @@
         // --- DOM ---
         const els = {
             form: document.getElementById('inspectionForm'),
+            agentInput: document.getElementById('agentInput'),
+            agentsList: document.getElementById('agentsList'),
             cameraInput: document.getElementById('cameraInput'),
             gallery: document.getElementById('gallery'),
             cameraText: document.getElementById('cameraText'),
@@ -109,8 +120,35 @@
             badge: document.getElementById('photoCountBadge')
         };
 
-        // --- INIT ---
-        const rooms = ["Entrée", "Salon", "Cuisine", "Chambre 1", "Chambre 2", "SDB", "WC", "Autre"];
+        // --- INIT AGENTS (LocalStorage) ---
+        function loadAgents() {
+            const savedAgents = JSON.parse(localStorage.getItem('agents_history') || '[]');
+            els.agentsList.innerHTML = '';
+            savedAgents.forEach(agent => {
+                const option = document.createElement('option');
+                option.value = agent;
+                els.agentsList.appendChild(option);
+            });
+            // Pré-remplir avec le dernier agent utilisé
+            if (savedAgents.length > 0) {
+                els.agentInput.value = savedAgents[0];
+            }
+        }
+        loadAgents();
+
+        function saveAgent(name) {
+            if(!name) return;
+            let savedAgents = JSON.parse(localStorage.getItem('agents_history') || '[]');
+            // Ajouter au début et supprimer les doublons
+            savedAgents = [name, ...savedAgents.filter(a => a !== name)];
+            // Garder max 5 noms
+            savedAgents = savedAgents.slice(0, 5);
+            localStorage.setItem('agents_history', JSON.stringify(savedAgents));
+            loadAgents(); // Rafraichir la liste
+        }
+
+        // --- INIT PIÈCES (Ajout Chambre 3 et 4) ---
+        const rooms = ["Entrée", "Salon", "Cuisine", "Chambre 1", "Chambre 2", "Chambre 3", "Chambre 4", "SDB", "WC", "Autre"];
         rooms.forEach(room => {
             const btn = document.createElement('button');
             btn.type = 'button';
@@ -198,13 +236,21 @@
         // --- ENVOI ---
         els.form.addEventListener('submit', async (e) => {
             e.preventDefault();
+            
+            const agentName = els.agentInput.value.trim();
+            if (!agentName) { showToast("Nom agent requis !", true); return; }
             if (photosList.length === 0) { showToast("Photo requise !", true); return; }
+            
+            // Sauvegarder l'agent dans l'historique
+            saveAgent(agentName);
+
             setLoading(true);
 
             const appName = els.appartement.value === 'Nouveau' ? els.newAppart.value : els.appartement.value;
             const roomName = els.selectedRoomInput.value === 'Autre' ? els.customRoom.value : els.selectedRoomInput.value;
 
             const payload = {
+                agent: agentName,
                 appartement: appName,
                 piece: roomName,
                 note: els.notes.value,
@@ -214,7 +260,6 @@
             };
 
             try {
-                // Fetch avec mode 'text' pour éviter parsing JSON immédiat qui plante sur CORS
                 const response = await fetch(API_URL, {
                     method: 'POST',
                     redirect: 'follow',
@@ -222,14 +267,12 @@
                     body: JSON.stringify(payload)
                 });
 
-                // Lecture en texte d'abord
                 const responseText = await response.text();
                 
                 let result = {};
                 try {
                     result = JSON.parse(responseText);
                 } catch(e) {
-                    // Si pas JSON mais OK, on suppose succès (cas fréquent GAS)
                     console.log("Réponse non JSON:", responseText);
                     result = { status: 'success' };
                 }
@@ -237,15 +280,17 @@
                 if (result.status === 'success' || response.ok) {
                     showToast("Données envoyées !");
                     resetForm();
+                    // On remet le nom de l'agent après reset
+                    els.agentInput.value = agentName;
                 } else {
                     showToast("Erreur: " + (result.message || "Inconnue"), true);
                 }
 
             } catch (err) {
-                // Si erreur réseau pure, mais qu'on sait que GAS reçoit (200 OK), on rassure l'utilisateur
                 console.error(err);
                 showToast("Envoyé ! (Vérifiez le Sheet)", false);
                 resetForm();
+                els.agentInput.value = agentName;
             } finally {
                 setLoading(false);
             }
