@@ -14,6 +14,17 @@
     
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        .recording-pulse {
+            animation: pulse-red 1.5s infinite;
+        }
+        @keyframes pulse-red {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+    </style>
 </head>
 <body class="bg-gray-100 min-h-screen pb-24">
 
@@ -28,13 +39,11 @@
     <main class="p-4 max-w-md mx-auto space-y-4">
         <form id="inspectionForm" class="space-y-4">
 
-            <!-- Agent / Utilisateur (Nouveau) -->
+            <!-- Agent / Utilisateur -->
             <div class="bg-white p-4 rounded-lg shadow">
                 <label class="block text-gray-700 text-sm font-bold mb-2">Agent / Utilisateur</label>
                 <input list="agentsList" id="agentInput" type="text" placeholder="Votre nom..." class="w-full p-3 border border-gray-300 rounded focus:outline-none focus:border-blue-500" required>
-                <datalist id="agentsList">
-                    <!-- Rempli par JS via localStorage -->
-                </datalist>
+                <datalist id="agentsList"></datalist>
             </div>
             
             <!-- Appartement -->
@@ -74,10 +83,31 @@
                 </div>
             </div>
 
-            <!-- Notes -->
-            <div class="bg-white p-4 rounded-lg shadow">
-                <label class="block text-gray-700 text-sm font-bold mb-2">Notes</label>
-                <textarea id="notes" rows="2" class="w-full p-2 border border-gray-300 rounded focus:border-blue-500 outline-none" placeholder="Observations..."></textarea>
+            <!-- Notes & Audio -->
+            <div class="bg-white p-4 rounded-lg shadow space-y-4">
+                <div>
+                    <label class="block text-gray-700 text-sm font-bold mb-2">Notes texte</label>
+                    <textarea id="notes" rows="2" class="w-full p-2 border border-gray-300 rounded focus:border-blue-500 outline-none" placeholder="Observations..."></textarea>
+                </div>
+                
+                <div class="border-t pt-3">
+                    <label class="block text-gray-700 text-sm font-bold mb-2">Note Vocale</label>
+                    
+                    <div class="flex items-center space-x-2">
+                        <!-- Bouton Record -->
+                        <button type="button" id="recordBtn" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2 px-4 rounded border border-gray-300 flex items-center justify-center transition">
+                            <i class="fa-solid fa-microphone mr-2"></i> <span id="recordText">Enregistrer</span>
+                        </button>
+                        
+                        <!-- Bouton Delete Audio (Caché par défaut) -->
+                        <button type="button" id="deleteAudioBtn" class="hidden bg-red-100 text-red-600 p-2 rounded border border-red-200">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
+                    </div>
+
+                    <!-- Lecteur Audio (Caché par défaut) -->
+                    <audio id="audioPreview" controls class="w-full mt-2 hidden"></audio>
+                </div>
             </div>
 
             <!-- Submit -->
@@ -99,6 +129,9 @@
         // --- ÉTAT ---
         let photosList = [];
         let currentLat = "", currentLon = "";
+        let audioBlob = null;
+        let mediaRecorder = null;
+        let audioChunks = [];
 
         // --- DOM ---
         const els = {
@@ -117,10 +150,15 @@
             customRoom: document.getElementById('customRoom'),
             notes: document.getElementById('notes'),
             toast: document.getElementById('toast'),
-            badge: document.getElementById('photoCountBadge')
+            badge: document.getElementById('photoCountBadge'),
+            // Audio
+            recordBtn: document.getElementById('recordBtn'),
+            recordText: document.getElementById('recordText'),
+            audioPreview: document.getElementById('audioPreview'),
+            deleteAudioBtn: document.getElementById('deleteAudioBtn')
         };
 
-        // --- INIT AGENTS (LocalStorage) ---
+        // --- INIT AGENTS ---
         function loadAgents() {
             const savedAgents = JSON.parse(localStorage.getItem('agents_history') || '[]');
             els.agentsList.innerHTML = '';
@@ -129,25 +167,19 @@
                 option.value = agent;
                 els.agentsList.appendChild(option);
             });
-            // Pré-remplir avec le dernier agent utilisé
-            if (savedAgents.length > 0) {
-                els.agentInput.value = savedAgents[0];
-            }
+            if (savedAgents.length > 0) els.agentInput.value = savedAgents[0];
         }
         loadAgents();
 
         function saveAgent(name) {
             if(!name) return;
             let savedAgents = JSON.parse(localStorage.getItem('agents_history') || '[]');
-            // Ajouter au début et supprimer les doublons
-            savedAgents = [name, ...savedAgents.filter(a => a !== name)];
-            // Garder max 5 noms
-            savedAgents = savedAgents.slice(0, 5);
+            savedAgents = [name, ...savedAgents.filter(a => a !== name)].slice(0, 5);
             localStorage.setItem('agents_history', JSON.stringify(savedAgents));
-            loadAgents(); // Rafraichir la liste
+            loadAgents();
         }
 
-        // --- INIT PIÈCES (Ajout Chambre 3 et 4) ---
+        // --- INIT PIÈCES ---
         const rooms = ["Entrée", "Salon", "Cuisine", "Chambre 1", "Chambre 2", "Chambre 3", "Chambre 4", "SDB", "WC", "Autre"];
         rooms.forEach(room => {
             const btn = document.createElement('button');
@@ -230,7 +262,66 @@
             });
             els.badge.classList.toggle('hidden', photosList.length === 0);
             els.badge.innerText = photosList.length;
-            els.submitBtn.innerHTML = photosList.length > 0 ? `<span>Envoyer (${photosList.length})</span><i class="fa-solid fa-paper-plane ml-2"></i>` : `<span>Envoyer Tout</span><i class="fa-solid fa-paper-plane ml-2"></i>`;
+            updateSubmitButton();
+        }
+
+        // --- AUDIO RECORDING ---
+        els.recordBtn.addEventListener('click', async () => {
+            if (mediaRecorder && mediaRecorder.state === "recording") {
+                // STOP RECORDING
+                mediaRecorder.stop();
+                els.recordBtn.classList.remove('bg-red-600', 'text-white', 'recording-pulse');
+                els.recordBtn.classList.add('bg-gray-100', 'text-gray-700');
+                els.recordText.innerText = "Enregistrer";
+                els.recordBtn.innerHTML = '<i class="fa-solid fa-microphone mr-2"></i> <span id="recordText">Enregistrer</span>';
+            } else {
+                // START RECORDING
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    mediaRecorder = new MediaRecorder(stream);
+                    audioChunks = [];
+
+                    mediaRecorder.ondataavailable = event => {
+                        audioChunks.push(event.data);
+                    };
+
+                    mediaRecorder.onstop = () => {
+                        audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType });
+                        const audioUrl = URL.createObjectURL(audioBlob);
+                        els.audioPreview.src = audioUrl;
+                        els.audioPreview.classList.remove('hidden');
+                        els.deleteAudioBtn.classList.remove('hidden');
+                        updateSubmitButton();
+                        
+                        // Stop all tracks to release microphone
+                        stream.getTracks().forEach(track => track.stop());
+                    };
+
+                    mediaRecorder.start();
+                    els.recordBtn.classList.remove('bg-gray-100', 'text-gray-700');
+                    els.recordBtn.classList.add('bg-red-600', 'text-white', 'recording-pulse');
+                    els.recordBtn.innerHTML = '<i class="fa-solid fa-stop mr-2"></i> <span id="recordText">Stop</span>';
+
+                } catch (err) {
+                    console.error("Erreur micro:", err);
+                    showToast("Accès micro refusé ou impossible", true);
+                }
+            }
+        });
+
+        els.deleteAudioBtn.addEventListener('click', () => {
+            audioBlob = null;
+            els.audioPreview.src = "";
+            els.audioPreview.classList.add('hidden');
+            els.deleteAudioBtn.classList.add('hidden');
+            updateSubmitButton();
+        });
+
+        function updateSubmitButton() {
+            const hasContent = photosList.length > 0 || audioBlob !== null;
+            els.submitBtn.innerHTML = hasContent ? 
+                `<span>Envoyer ${audioBlob ? '(+Audio)' : ''}</span><i class="fa-solid fa-paper-plane ml-2"></i>` : 
+                `<span>Envoyer Tout</span><i class="fa-solid fa-paper-plane ml-2"></i>`;
         }
 
         // --- ENVOI ---
@@ -239,12 +330,26 @@
             
             const agentName = els.agentInput.value.trim();
             if (!agentName) { showToast("Nom agent requis !", true); return; }
-            if (photosList.length === 0) { showToast("Photo requise !", true); return; }
             
-            // Sauvegarder l'agent dans l'historique
+            if (photosList.length === 0 && audioBlob === null) { 
+                showToast("Ajoutez au moins une photo ou un audio !", true); 
+                return; 
+            }
+            
             saveAgent(agentName);
-
             setLoading(true);
+
+            // Conversion Audio Base64 si présent
+            let audioBase64 = null;
+            let audioMimeType = null;
+            if (audioBlob) {
+                audioBase64 = await new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result.split(',')[1]);
+                    reader.readAsDataURL(audioBlob);
+                });
+                audioMimeType = audioBlob.type;
+            }
 
             const appName = els.appartement.value === 'Nouveau' ? els.newAppart.value : els.appartement.value;
             const roomName = els.selectedRoomInput.value === 'Autre' ? els.customRoom.value : els.selectedRoomInput.value;
@@ -256,7 +361,9 @@
                 note: els.notes.value,
                 lat: currentLat,
                 lon: currentLon,
-                images: photosList
+                images: photosList,
+                audio: audioBase64,
+                audioMime: audioMimeType
             };
 
             try {
@@ -273,14 +380,12 @@
                 try {
                     result = JSON.parse(responseText);
                 } catch(e) {
-                    console.log("Réponse non JSON:", responseText);
                     result = { status: 'success' };
                 }
 
                 if (result.status === 'success' || response.ok) {
                     showToast("Données envoyées !");
                     resetForm();
-                    // On remet le nom de l'agent après reset
                     els.agentInput.value = agentName;
                 } else {
                     showToast("Erreur: " + (result.message || "Inconnue"), true);
@@ -298,13 +403,21 @@
 
         function setLoading(isLoading) {
             els.submitBtn.disabled = isLoading;
-            els.submitBtn.innerHTML = isLoading ? '<div class="w-6 h-6 border-4 border-gray-200 border-t-blue-500 rounded-full animate-spin"></div>' : `<span>Envoyer (${photosList.length})</span><i class="fa-solid fa-paper-plane ml-2"></i>`;
+            els.submitBtn.innerHTML = isLoading ? 
+                '<div class="w-6 h-6 border-4 border-gray-200 border-t-blue-500 rounded-full animate-spin"></div>' : 
+                updateSubmitButton();
         }
 
         function resetForm() {
             els.notes.value = "";
             photosList = [];
             updateGallery();
+            // Reset Audio
+            audioBlob = null;
+            els.audioPreview.src = "";
+            els.audioPreview.classList.add('hidden');
+            els.deleteAudioBtn.classList.add('hidden');
+            updateSubmitButton();
         }
 
         function showToast(message, isError = false) {
