@@ -1,17 +1,13 @@
-const CACHE_NAME = 'etat-lieux-v3'; // Nouvelle version v3
+const CACHE_NAME = 'etat-lieux-v4'; // Version v4 pour forcer la maj
 const ASSETS = [
   './',
   './index.html',
   './manifest.json'
-  // On a retiré les liens externes (Tailwind/FontAwesome) ici pour éviter l'erreur "Failed to fetch"
-  // Le navigateur les mettra en cache via son cache standard HTTP.
 ];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS);
-    })
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
   );
 });
 
@@ -20,9 +16,7 @@ self.addEventListener('activate', (e) => {
         caches.keys().then((keys) => {
             return Promise.all(
                 keys.map((key) => {
-                    if (key !== CACHE_NAME) {
-                        return caches.delete(key);
-                    }
+                    if (key !== CACHE_NAME) return caches.delete(key);
                 })
             );
         })
@@ -30,14 +24,8 @@ self.addEventListener('activate', (e) => {
 });
 
 self.addEventListener('fetch', (e) => {
-  // On ignore les requêtes API vers Google
-  if (e.request.url.includes('script.google.com')) {
-    return;
-  }
-
+  if (e.request.url.includes('script.google.com')) return;
   e.respondWith(
-    caches.match(e.request).then((response) => {
-      return response || fetch(e.request);
-    })
+    caches.match(e.request).then((response) => response || fetch(e.request))
   );
 });
