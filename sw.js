@@ -1,274 +1,31 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Suivi Déménagement</title>
-    
-    <!-- Favicon -->
-    <link rel="shortcut icon" href="https://img.icons8.com/fluency/96/home.png" type="image/png">
-    
-    <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#2563eb">
-    <link rel="apple-touch-icon" href="https://img.icons8.com/fluency/96/home.png">
-    
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-</head>
-<body class="bg-gray-100 min-h-screen pb-24">
+const CACHE_NAME = 'etat-lieux-v4'; // Version v4 pour forcer la maj
+const ASSETS = [
+  './',
+  './index.html',
+  './manifest.json'
+];
 
-    <!-- Header -->
-    <header class="bg-blue-600 text-white p-4 sticky top-0 z-50 shadow-md flex justify-between items-center">
-        <h1 class="text-xl font-bold flex items-center">
-            <i class="fa-solid fa-box-open mr-2"></i> État des Lieux
-        </h1>
-        <div id="photoCountBadge" class="hidden bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full">0</div>
-    </header>
+self.addEventListener('install', (e) => {
+  e.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
+  );
+});
 
-    <main class="p-4 max-w-md mx-auto space-y-4">
-        <form id="inspectionForm" class="space-y-4">
-            
-            <!-- Appartement -->
-            <div class="bg-white p-4 rounded-lg shadow">
-                <label class="block text-gray-700 text-sm font-bold mb-2">Appartement</label>
-                <div class="relative">
-                    <select id="appartement" class="block w-full bg-gray-50 border border-gray-300 text-gray-700 py-3 px-4 rounded leading-tight focus:outline-none focus:border-blue-500">
-                        <option value="Appartement A">Appartement A</option>
-                        <option value="Appartement B">Appartement B</option>
-                        <option value="Nouveau">Autre / Nouveau...</option>
-                    </select>
-                </div>
-                <input type="text" id="newAppart" placeholder="Nom..." class="mt-2 w-full p-2 border rounded hidden">
-            </div>
-
-            <!-- Pièce -->
-            <div class="bg-white p-4 rounded-lg shadow">
-                <label class="block text-gray-700 text-sm font-bold mb-2">Pièce</label>
-                <div class="flex flex-wrap gap-2" id="roomTags"></div>
-                <input type="hidden" id="selectedRoom" value="">
-                <input type="text" id="customRoom" placeholder="Nom de la pièce..." class="mt-3 w-full p-2 border rounded text-sm hidden">
-            </div>
-
-            <!-- Photos -->
-            <div class="bg-white p-4 rounded-lg shadow">
-                <label class="block text-gray-700 text-sm font-bold mb-2">Photos</label>
-                <div id="gallery" class="grid grid-cols-3 gap-2 mb-3"></div>
-
-                <label for="cameraInput" class="cursor-pointer bg-blue-50 hover:bg-blue-100 text-blue-600 font-semibold py-3 px-4 rounded-lg border-2 border-blue-500 border-dashed w-full flex items-center justify-center transition">
-                    <i class="fa-solid fa-camera text-xl mr-2"></i>
-                    <span id="cameraText">Ajouter une photo</span>
-                </label>
-                <input type="file" id="cameraInput" accept="image/*" capture="environment" class="hidden">
-                
-                <div id="gpsStatus" class="mt-2 text-xs text-gray-500 flex items-center justify-center">
-                    <i class="fa-solid fa-location-dot mr-1"></i> <span id="gpsText">Localisation...</span>
-                </div>
-            </div>
-
-            <!-- Notes -->
-            <div class="bg-white p-4 rounded-lg shadow">
-                <label class="block text-gray-700 text-sm font-bold mb-2">Notes</label>
-                <textarea id="notes" rows="2" class="w-full p-2 border border-gray-300 rounded focus:border-blue-500 outline-none" placeholder="Observations..."></textarea>
-            </div>
-
-            <!-- Submit -->
-            <div class="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 shadow-lg md:relative md:bg-transparent md:border-none md:shadow-none md:p-0">
-                <button type="submit" id="submitBtn" class="w-full max-w-md mx-auto bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow text-lg flex justify-center items-center transition disabled:opacity-50">
-                    <span>Envoyer Tout</span>
-                    <i class="fa-solid fa-paper-plane ml-2"></i>
-                </button>
-            </div>
-        </form>
-
-        <div id="toast" class="fixed bottom-20 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg opacity-0 transition-opacity duration-300 pointer-events-none z-50"></div>
-    </main>
-
-    <script>
-        // --- CONFIGURATION ---
-        const API_URL = "https://script.google.com/macros/s/AKfycbzd1R-m1zLpeN7yle6BYeM2iCVLRRnzLzgbqFmVdMGbykIB-HtXkyDVRwmdv4qaDZY0/exec"; 
-
-        // --- ÉTAT ---
-        let photosList = [];
-        let currentLat = "", currentLon = "";
-
-        // --- DOM ---
-        const els = {
-            form: document.getElementById('inspectionForm'),
-            cameraInput: document.getElementById('cameraInput'),
-            gallery: document.getElementById('gallery'),
-            cameraText: document.getElementById('cameraText'),
-            gpsText: document.getElementById('gpsText'),
-            submitBtn: document.getElementById('submitBtn'),
-            appartement: document.getElementById('appartement'),
-            newAppart: document.getElementById('newAppart'),
-            roomTags: document.getElementById('roomTags'),
-            selectedRoomInput: document.getElementById('selectedRoom'),
-            customRoom: document.getElementById('customRoom'),
-            notes: document.getElementById('notes'),
-            toast: document.getElementById('toast'),
-            badge: document.getElementById('photoCountBadge')
-        };
-
-        // --- INIT ---
-        const rooms = ["Entrée", "Salon", "Cuisine", "Chambre 1", "Chambre 2", "SDB", "WC", "Autre"];
-        rooms.forEach(room => {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = `px-3 py-1 rounded-full text-sm border transition ${room === 'Salon' ? 'bg-blue-500 text-white border-blue-500' : 'bg-gray-100 text-gray-600 border-gray-200'}`;
-            btn.innerText = room;
-            btn.onclick = () => selectRoom(room, btn);
-            els.roomTags.appendChild(btn);
-            if(room === 'Salon') selectRoom('Salon', btn);
-        });
-
-        function selectRoom(roomName, btnElement) {
-            Array.from(els.roomTags.children).forEach(b => b.className = 'px-3 py-1 rounded-full text-sm border bg-gray-100 text-gray-600 border-gray-200');
-            btnElement.className = 'px-3 py-1 rounded-full text-sm border bg-blue-500 text-white border-blue-500 shadow';
-            els.selectedRoomInput.value = roomName;
-            if(roomName === 'Autre') { els.customRoom.classList.remove('hidden'); els.customRoom.focus(); }
-            else { els.customRoom.classList.add('hidden'); }
-        }
-
-        els.appartement.addEventListener('change', (e) => {
-            els.newAppart.classList.toggle('hidden', e.target.value !== 'Nouveau');
-            if(e.target.value === 'Nouveau') els.newAppart.focus();
-        });
-
-        if ("geolocation" in navigator) {
-            navigator.geolocation.watchPosition(
-                (pos) => {
-                    currentLat = pos.coords.latitude;
-                    currentLon = pos.coords.longitude;
-                    els.gpsText.innerHTML = `<span class="text-green-600 font-bold">GPS OK</span>`;
-                },
-                (err) => { els.gpsText.innerText = "Pas de GPS"; els.gpsText.className = "text-red-500 text-xs"; },
-                { enableHighAccuracy: true }
+self.addEventListener('activate', (e) => {
+    e.waitUntil(
+        caches.keys().then((keys) => {
+            return Promise.all(
+                keys.map((key) => {
+                    if (key !== CACHE_NAME) return caches.delete(key);
+                })
             );
-        }
+        })
+    );
+});
 
-        // --- PHOTOS ---
-        els.cameraInput.addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            const oldText = els.cameraText.innerText;
-            els.cameraText.innerText = "Traitement...";
-
-            const reader = new FileReader();
-            reader.onloadend = function() {
-                const img = new Image();
-                img.src = reader.result;
-                img.onload = function() {
-                    const canvas = document.createElement('canvas');
-                    const ctx = canvas.getContext('2d');
-                    const maxWidth = 1000;
-                    const scaleSize = maxWidth / img.width;
-                    canvas.width = maxWidth;
-                    canvas.height = img.height * scaleSize;
-                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                    const base64 = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
-                    photosList.push(base64);
-                    updateGallery();
-                    els.cameraText.innerText = oldText;
-                    els.cameraInput.value = ""; 
-                }
-            }
-            reader.readAsDataURL(file);
-        });
-
-        function updateGallery() {
-            els.gallery.innerHTML = "";
-            photosList.forEach((photo, index) => {
-                const div = document.createElement('div');
-                div.className = "relative group h-24 w-full";
-                const img = document.createElement('img');
-                img.src = "data:image/jpeg;base64," + photo;
-                img.className = "h-full w-full object-cover rounded border border-gray-300";
-                const btn = document.createElement('button');
-                btn.type = "button";
-                btn.className = "absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center shadow-md";
-                btn.innerHTML = '<i class="fa-solid fa-times text-xs"></i>';
-                btn.onclick = () => { photosList.splice(index, 1); updateGallery(); };
-                div.appendChild(img); div.appendChild(btn); els.gallery.appendChild(div);
-            });
-            els.badge.classList.toggle('hidden', photosList.length === 0);
-            els.badge.innerText = photosList.length;
-            els.submitBtn.innerHTML = photosList.length > 0 ? `<span>Envoyer (${photosList.length})</span><i class="fa-solid fa-paper-plane ml-2"></i>` : `<span>Envoyer Tout</span><i class="fa-solid fa-paper-plane ml-2"></i>`;
-        }
-
-        // --- ENVOI ---
-        els.form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            if (photosList.length === 0) { showToast("Photo requise !", true); return; }
-            setLoading(true);
-
-            const appName = els.appartement.value === 'Nouveau' ? els.newAppart.value : els.appartement.value;
-            const roomName = els.selectedRoomInput.value === 'Autre' ? els.customRoom.value : els.selectedRoomInput.value;
-
-            const payload = {
-                appartement: appName,
-                piece: roomName,
-                note: els.notes.value,
-                lat: currentLat,
-                lon: currentLon,
-                images: photosList
-            };
-
-            try {
-                // Fetch avec mode 'text' pour éviter parsing JSON immédiat qui plante sur CORS
-                const response = await fetch(API_URL, {
-                    method: 'POST',
-                    redirect: 'follow',
-                    headers: { "Content-Type": "text/plain;charset=utf-8" },
-                    body: JSON.stringify(payload)
-                });
-
-                // Lecture en texte d'abord
-                const responseText = await response.text();
-                
-                let result = {};
-                try {
-                    result = JSON.parse(responseText);
-                } catch(e) {
-                    // Si pas JSON mais OK, on suppose succès (cas fréquent GAS)
-                    console.log("Réponse non JSON:", responseText);
-                    result = { status: 'success' };
-                }
-
-                if (result.status === 'success' || response.ok) {
-                    showToast("Données envoyées !");
-                    resetForm();
-                } else {
-                    showToast("Erreur: " + (result.message || "Inconnue"), true);
-                }
-
-            } catch (err) {
-                // Si erreur réseau pure, mais qu'on sait que GAS reçoit (200 OK), on rassure l'utilisateur
-                console.error(err);
-                showToast("Envoyé ! (Vérifiez le Sheet)", false);
-                resetForm();
-            } finally {
-                setLoading(false);
-            }
-        });
-
-        function setLoading(isLoading) {
-            els.submitBtn.disabled = isLoading;
-            els.submitBtn.innerHTML = isLoading ? '<div class="w-6 h-6 border-4 border-gray-200 border-t-blue-500 rounded-full animate-spin"></div>' : `<span>Envoyer (${photosList.length})</span><i class="fa-solid fa-paper-plane ml-2"></i>`;
-        }
-
-        function resetForm() {
-            els.notes.value = "";
-            photosList = [];
-            updateGallery();
-        }
-
-        function showToast(message, isError = false) {
-            els.toast.innerText = message;
-            els.toast.className = `fixed bottom-20 left-1/2 transform -translate-x-1/2 px-4 py-2 rounded-lg shadow-lg opacity-100 transition-opacity duration-300 pointer-events-none z-50 ${isError ? 'bg-orange-600' : 'bg-green-600'} text-white`;
-            setTimeout(() => { els.toast.classList.remove('opacity-100'); els.toast.classList.add('opacity-0'); }, 4000);
-        }
-
-        if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js');
-    </script>
-</body>
-</html>
+self.addEventListener('fetch', (e) => {
+  if (e.request.url.includes('script.google.com')) return;
+  e.respondWith(
+    caches.match(e.request).then((response) => response || fetch(e.request))
+  );
+});
