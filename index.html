@@ -104,7 +104,8 @@
 
     <script>
         // CONFIGURATION
-        const API_URL = "https://script.google.com/macros/s/AKfycbzd1R-m1zLpeN7yle6BYeM2iCVLRRnzLzgbqFmVdMGbykIB-HtXkyDVRwmdv4qaDZY0/exec"; // ⚠️ REMETS TON URL ICI
+        // ⚠️⚠️⚠️ ATTENTION : COLLE TON URL APPS SCRIPT ICI ENTRE LES GUILLEMETS ⚠️⚠️⚠️
+        const API_URL = "https://script.google.com/macros/s/AKfycbzd1R-m1zLpeN7yle6BYeM2iCVLRRnzLzgbqFmVdMGbykIB-HtXkyDVRwmdv4qaDZY0/exec"; 
 
         // ÉTAT
         let photosList = []; // Liste des base64
@@ -178,7 +179,6 @@
             const file = e.target.files[0];
             if (!file) return;
 
-            // Petit effet de chargement sur le texte
             const oldText = els.cameraText.innerText;
             els.cameraText.innerText = "Compression...";
 
@@ -190,8 +190,7 @@
                     const canvas = document.createElement('canvas');
                     const ctx = canvas.getContext('2d');
                     
-                    // Compression
-                    const maxWidth = 1000; // Un peu moins large pour le multi-envoi
+                    const maxWidth = 1000;
                     const scaleSize = maxWidth / img.width;
                     canvas.width = maxWidth;
                     canvas.height = img.height * scaleSize;
@@ -201,12 +200,10 @@
                     const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.6);
                     const base64 = compressedDataUrl.split(',')[1];
                     
-                    // AJOUT A LA LISTE
                     photosList.push(base64);
                     updateGallery();
                     
                     els.cameraText.innerText = oldText;
-                    // Reset input pour pouvoir reprendre la même photo si besoin
                     els.cameraInput.value = ""; 
                 }
             }
@@ -219,12 +216,10 @@
                 const div = document.createElement('div');
                 div.className = "relative group h-24 w-full";
                 
-                // Image
                 const img = document.createElement('img');
                 img.src = "data:image/jpeg;base64," + photo;
                 img.className = "h-full w-full object-cover rounded border border-gray-300";
                 
-                // Bouton Supprimer
                 const btn = document.createElement('button');
                 btn.type = "button";
                 btn.className = "absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center shadow-md";
@@ -239,7 +234,6 @@
                 els.gallery.appendChild(div);
             });
 
-            // Mise à jour badge compteur
             if(photosList.length > 0) {
                 els.badge.classList.remove('hidden');
                 els.badge.innerText = photosList.length;
@@ -250,12 +244,17 @@
             }
         }
 
-        // --- ENVOI ---
+        // --- ENVOI AVEC CORRECTION CORS ---
         els.form.addEventListener('submit', async (e) => {
             e.preventDefault();
 
             if (photosList.length === 0) {
                 showToast("Ajoutez au moins une photo !", true);
+                return;
+            }
+            
+            if (API_URL.includes("TA_URL")) {
+                showToast("Erreur config: URL manquante !", true);
                 return;
             }
 
@@ -264,19 +263,24 @@
             const appName = els.appartement.value === 'Nouveau' ? els.newAppart.value : els.appartement.value;
             const roomName = els.selectedRoomInput.value === 'Autre' ? els.customRoom.value : els.selectedRoomInput.value;
 
-            // Envoi de la liste 'images'
             const payload = {
                 appartement: appName,
                 piece: roomName,
                 note: els.notes.value,
                 lat: currentLat,
                 lon: currentLon,
-                images: photosList // C'est ici que ça change
+                images: photosList
             };
 
             try {
+                // MODIFICATION ICI : On force le content-type à text/plain
+                // Cela aide Google Apps Script à traiter la requête sans bloquer sur le CORS pre-flight
                 const response = await fetch(API_URL, {
                     method: 'POST',
+                    redirect: 'follow', // Important pour suivre la redirection GAS
+                    headers: {
+                        "Content-Type": "text/plain;charset=utf-8",
+                    },
                     body: JSON.stringify(payload)
                 });
                 
@@ -290,7 +294,7 @@
                 }
             } catch (err) {
                 console.error(err);
-                showToast("Erreur réseau (vérifiez l'URL).", true);
+                showToast("Erreur réseau. Vérifiez le déploiement.", true);
             } finally {
                 setLoading(false);
             }
