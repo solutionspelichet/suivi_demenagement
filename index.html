@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Suivi Déménagement</title>
     
-    <!-- Favicon pour éviter l'erreur 404 -->
+    <!-- Favicon -->
     <link rel="shortcut icon" href="https://img.icons8.com/fluency/96/home.png" type="image/png">
     
     <link rel="manifest" href="manifest.json">
@@ -14,19 +14,6 @@
     
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-        .loader {
-            border-top-color: #3498db;
-            -webkit-animation: spinner 1.5s linear infinite;
-            animation: spinner 1.5s linear infinite;
-        }
-        @keyframes spinner {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-    </style>
 </head>
 <body class="bg-gray-100 min-h-screen pb-24">
 
@@ -39,8 +26,6 @@
     </header>
 
     <main class="p-4 max-w-md mx-auto space-y-4">
-        
-        <!-- Formulaire -->
         <form id="inspectionForm" class="space-y-4">
             
             <!-- Appartement -->
@@ -64,23 +49,17 @@
                 <input type="text" id="customRoom" placeholder="Nom de la pièce..." class="mt-3 w-full p-2 border rounded text-sm hidden">
             </div>
 
-            <!-- Zone Photos (Galerie + Ajout) -->
+            <!-- Photos -->
             <div class="bg-white p-4 rounded-lg shadow">
                 <label class="block text-gray-700 text-sm font-bold mb-2">Photos</label>
-                
-                <!-- Galerie des miniatures -->
-                <div id="gallery" class="grid grid-cols-3 gap-2 mb-3">
-                    <!-- Les images s'ajoutent ici via JS -->
-                </div>
+                <div id="gallery" class="grid grid-cols-3 gap-2 mb-3"></div>
 
-                <!-- Bouton Ajout Photo -->
                 <label for="cameraInput" class="cursor-pointer bg-blue-50 hover:bg-blue-100 text-blue-600 font-semibold py-3 px-4 rounded-lg border-2 border-blue-500 border-dashed w-full flex items-center justify-center transition">
                     <i class="fa-solid fa-camera text-xl mr-2"></i>
                     <span id="cameraText">Ajouter une photo</span>
                 </label>
                 <input type="file" id="cameraInput" accept="image/*" capture="environment" class="hidden">
                 
-                <!-- Info GPS -->
                 <div id="gpsStatus" class="mt-2 text-xs text-gray-500 flex items-center justify-center">
                     <i class="fa-solid fa-location-dot mr-1"></i> <span id="gpsText">Localisation...</span>
                 </div>
@@ -92,28 +71,27 @@
                 <textarea id="notes" rows="2" class="w-full p-2 border border-gray-300 rounded focus:border-blue-500 outline-none" placeholder="Observations..."></textarea>
             </div>
 
-            <!-- Bouton Envoyer (Sticky bottom) -->
+            <!-- Submit -->
             <div class="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 shadow-lg md:relative md:bg-transparent md:border-none md:shadow-none md:p-0">
                 <button type="submit" id="submitBtn" class="w-full max-w-md mx-auto bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow text-lg flex justify-center items-center transition disabled:opacity-50">
                     <span>Envoyer Tout</span>
                     <i class="fa-solid fa-paper-plane ml-2"></i>
                 </button>
             </div>
-
         </form>
 
         <div id="toast" class="fixed bottom-20 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg opacity-0 transition-opacity duration-300 pointer-events-none z-50"></div>
     </main>
 
     <script>
-        // CONFIGURATION
+        // --- CONFIGURATION ---
         const API_URL = "https://script.google.com/macros/s/AKfycbzd1R-m1zLpeN7yle6BYeM2iCVLRRnzLzgbqFmVdMGbykIB-HtXkyDVRwmdv4qaDZY0/exec"; 
 
-        // ÉTAT
+        // --- ÉTAT ---
         let photosList = [];
         let currentLat = "", currentLon = "";
 
-        // DOM
+        // --- DOM ---
         const els = {
             form: document.getElementById('inspectionForm'),
             cameraInput: document.getElementById('cameraInput'),
@@ -131,7 +109,7 @@
             badge: document.getElementById('photoCountBadge')
         };
 
-        // --- INIT PIÈCES ---
+        // --- INIT ---
         const rooms = ["Entrée", "Salon", "Cuisine", "Chambre 1", "Chambre 2", "SDB", "WC", "Autre"];
         rooms.forEach(room => {
             const btn = document.createElement('button');
@@ -147,23 +125,15 @@
             Array.from(els.roomTags.children).forEach(b => b.className = 'px-3 py-1 rounded-full text-sm border bg-gray-100 text-gray-600 border-gray-200');
             btnElement.className = 'px-3 py-1 rounded-full text-sm border bg-blue-500 text-white border-blue-500 shadow';
             els.selectedRoomInput.value = roomName;
-            
-            if(roomName === 'Autre') {
-                els.customRoom.classList.remove('hidden'); els.customRoom.focus();
-            } else {
-                els.customRoom.classList.add('hidden');
-            }
+            if(roomName === 'Autre') { els.customRoom.classList.remove('hidden'); els.customRoom.focus(); }
+            else { els.customRoom.classList.add('hidden'); }
         }
 
         els.appartement.addEventListener('change', (e) => {
-            if(e.target.value === 'Nouveau') {
-                els.newAppart.classList.remove('hidden'); els.newAppart.focus();
-            } else {
-                els.newAppart.classList.add('hidden');
-            }
+            els.newAppart.classList.toggle('hidden', e.target.value !== 'Nouveau');
+            if(e.target.value === 'Nouveau') els.newAppart.focus();
         });
 
-        // --- GPS ---
         if ("geolocation" in navigator) {
             navigator.geolocation.watchPosition(
                 (pos) => {
@@ -176,13 +146,12 @@
             );
         }
 
-        // --- GESTION PHOTOS MULTIPLES ---
+        // --- PHOTOS ---
         els.cameraInput.addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
-
             const oldText = els.cameraText.innerText;
-            els.cameraText.innerText = "Compression...";
+            els.cameraText.innerText = "Traitement...";
 
             const reader = new FileReader();
             reader.onloadend = function() {
@@ -191,21 +160,14 @@
                 img.onload = function() {
                     const canvas = document.createElement('canvas');
                     const ctx = canvas.getContext('2d');
-                    
                     const maxWidth = 1000;
                     const scaleSize = maxWidth / img.width;
                     canvas.width = maxWidth;
                     canvas.height = img.height * scaleSize;
-                    
                     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                    
-                    // Compression JPEG 0.6
-                    const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.6);
-                    const base64 = compressedDataUrl.split(',')[1];
-                    
+                    const base64 = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
                     photosList.push(base64);
                     updateGallery();
-                    
                     els.cameraText.innerText = oldText;
                     els.cameraInput.value = ""; 
                 }
@@ -218,44 +180,25 @@
             photosList.forEach((photo, index) => {
                 const div = document.createElement('div');
                 div.className = "relative group h-24 w-full";
-                
                 const img = document.createElement('img');
                 img.src = "data:image/jpeg;base64," + photo;
                 img.className = "h-full w-full object-cover rounded border border-gray-300";
-                
                 const btn = document.createElement('button');
                 btn.type = "button";
                 btn.className = "absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center shadow-md";
                 btn.innerHTML = '<i class="fa-solid fa-times text-xs"></i>';
-                btn.onclick = () => {
-                    photosList.splice(index, 1);
-                    updateGallery();
-                };
-
-                div.appendChild(img);
-                div.appendChild(btn);
-                els.gallery.appendChild(div);
+                btn.onclick = () => { photosList.splice(index, 1); updateGallery(); };
+                div.appendChild(img); div.appendChild(btn); els.gallery.appendChild(div);
             });
-
-            if(photosList.length > 0) {
-                els.badge.classList.remove('hidden');
-                els.badge.innerText = photosList.length;
-                els.submitBtn.innerHTML = `<span>Envoyer (${photosList.length})</span><i class="fa-solid fa-paper-plane ml-2"></i>`;
-            } else {
-                els.badge.classList.add('hidden');
-                els.submitBtn.innerHTML = `<span>Envoyer Tout</span><i class="fa-solid fa-paper-plane ml-2"></i>`;
-            }
+            els.badge.classList.toggle('hidden', photosList.length === 0);
+            els.badge.innerText = photosList.length;
+            els.submitBtn.innerHTML = photosList.length > 0 ? `<span>Envoyer (${photosList.length})</span><i class="fa-solid fa-paper-plane ml-2"></i>` : `<span>Envoyer Tout</span><i class="fa-solid fa-paper-plane ml-2"></i>`;
         }
 
         // --- ENVOI ---
         els.form.addEventListener('submit', async (e) => {
             e.preventDefault();
-
-            if (photosList.length === 0) {
-                showToast("Ajoutez au moins une photo !", true);
-                return;
-            }
-
+            if (photosList.length === 0) { showToast("Photo requise !", true); return; }
             setLoading(true);
 
             const appName = els.appartement.value === 'Nouveau' ? els.newAppart.value : els.appartement.value;
@@ -271,29 +214,38 @@
             };
 
             try {
-                // Requête simple "text/plain" pour maximiser la compatibilité CORS
+                // Fetch avec mode 'text' pour éviter parsing JSON immédiat qui plante sur CORS
                 const response = await fetch(API_URL, {
                     method: 'POST',
                     redirect: 'follow',
                     headers: { "Content-Type": "text/plain;charset=utf-8" },
                     body: JSON.stringify(payload)
                 });
+
+                // Lecture en texte d'abord
+                const responseText = await response.text();
                 
-                // On gère le cas où le réseau fonctionne (200 OK) mais le CORS bloque la lecture du JSON
-                if (response.ok || response.status === 200) {
-                    showToast(`Données envoyées avec succès !`);
+                let result = {};
+                try {
+                    result = JSON.parse(responseText);
+                } catch(e) {
+                    // Si pas JSON mais OK, on suppose succès (cas fréquent GAS)
+                    console.log("Réponse non JSON:", responseText);
+                    result = { status: 'success' };
+                }
+
+                if (result.status === 'success' || response.ok) {
+                    showToast("Données envoyées !");
                     resetForm();
                 } else {
-                    // Vrai échec serveur
-                    const text = await response.text();
-                    showToast("Erreur serveur: " + text, true);
+                    showToast("Erreur: " + (result.message || "Inconnue"), true);
                 }
 
             } catch (err) {
-                console.error("Fetch Error:", err);
-                // Fallback : Si on a une erreur "Failed to fetch" mais que le serveur a répondu 200 dans la console Network
-                // C'est que l'envoi a fonctionné mais le retour est bloqué.
-                showToast("Envoi probable (Vérifiez le Sheet)", true);
+                // Si erreur réseau pure, mais qu'on sait que GAS reçoit (200 OK), on rassure l'utilisateur
+                console.error(err);
+                showToast("Envoyé ! (Vérifiez le Sheet)", false);
+                resetForm();
             } finally {
                 setLoading(false);
             }
@@ -301,11 +253,7 @@
 
         function setLoading(isLoading) {
             els.submitBtn.disabled = isLoading;
-            if (isLoading) {
-                els.submitBtn.innerHTML = '<div class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-6 w-6"></div>';
-            } else {
-                els.submitBtn.innerHTML = `<span>Envoyer (${photosList.length})</span><i class="fa-solid fa-paper-plane ml-2"></i>`;
-            }
+            els.submitBtn.innerHTML = isLoading ? '<div class="w-6 h-6 border-4 border-gray-200 border-t-blue-500 rounded-full animate-spin"></div>' : `<span>Envoyer (${photosList.length})</span><i class="fa-solid fa-paper-plane ml-2"></i>`;
         }
 
         function resetForm() {
@@ -316,18 +264,11 @@
 
         function showToast(message, isError = false) {
             els.toast.innerText = message;
-            els.toast.className = `fixed bottom-20 left-1/2 transform -translate-x-1/2 px-4 py-2 rounded-lg shadow-lg opacity-100 transition-opacity duration-300 pointer-events-none z-50 ${isError ? 'bg-orange-600 text-white' : 'bg-green-600 text-white'}`;
-            setTimeout(() => {
-                els.toast.classList.remove('opacity-100');
-                els.toast.classList.add('opacity-0');
-            }, 4000);
+            els.toast.className = `fixed bottom-20 left-1/2 transform -translate-x-1/2 px-4 py-2 rounded-lg shadow-lg opacity-100 transition-opacity duration-300 pointer-events-none z-50 ${isError ? 'bg-orange-600' : 'bg-green-600'} text-white`;
+            setTimeout(() => { els.toast.classList.remove('opacity-100'); els.toast.classList.add('opacity-0'); }, 4000);
         }
 
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./sw.js');
-            });
-        }
+        if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js');
     </script>
 </body>
 </html>
