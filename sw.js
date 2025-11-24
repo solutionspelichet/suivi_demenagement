@@ -1,11 +1,10 @@
-// On incrémente la version ici : v2
-const CACHE_NAME = 'etat-lieux-v2';
+const CACHE_NAME = 'etat-lieux-v3'; // Nouvelle version v3
 const ASSETS = [
   './',
   './index.html',
-  './manifest.json',
-  'https://cdn.tailwindcss.com',
-  'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css'
+  './manifest.json'
+  // On a retiré les liens externes (Tailwind/FontAwesome) ici pour éviter l'erreur "Failed to fetch"
+  // Le navigateur les mettra en cache via son cache standard HTTP.
 ];
 
 self.addEventListener('install', (e) => {
@@ -16,7 +15,6 @@ self.addEventListener('install', (e) => {
   );
 });
 
-// Activation : Suppression des vieux caches (v1)
 self.addEventListener('activate', (e) => {
     e.waitUntil(
         caches.keys().then((keys) => {
@@ -32,6 +30,7 @@ self.addEventListener('activate', (e) => {
 });
 
 self.addEventListener('fetch', (e) => {
+  // On ignore les requêtes API vers Google
   if (e.request.url.includes('script.google.com')) {
     return;
   }
